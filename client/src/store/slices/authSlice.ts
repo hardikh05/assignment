@@ -26,12 +26,17 @@ const initialState: AuthState = {
 export const login = createAsyncThunk(
   'auth/login',
   async (token: string) => {
-    const response = await axios.get('/auth/me', {
+    // Check if we have a token from window.__AUTH_TOKEN__ (set by our callback handler)
+    const tokenToUse = (window as any).__AUTH_TOKEN__ || token;
+    
+    // Make sure we're using the correct API URL with the /api prefix
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://assignment-uf7q.onrender.com';
+    const response = await axios.get(`${apiUrl}/api/auth/me`, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${tokenToUse}`,
       },
     });
-    return { user: response.data, token };
+    return { user: response.data, token: tokenToUse };
   }
 );
 

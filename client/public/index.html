@@ -19,5 +19,18 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    
+    <!-- Auth token handler -->
+    <script>
+      // This script helps handle the token when the callback page redirects to the main app
+      document.addEventListener('DOMContentLoaded', function() {
+        // Check if we have a token in localStorage that was set by the callback page
+        const token = localStorage.getItem('token');
+        if (token && window.location.pathname === '/') {
+          // We have a token and we're on the main page, let the app know about it
+          window.__AUTH_TOKEN__ = token;
+        }
+      });
+    </script>
   </body>
 </html>
