@@ -78,4 +78,29 @@ router.get('/me', async (req, res, next) => {
   }
 });
 
+// Handle direct callback with token
+router.get('/callback', async (req, res) => {
+  try {
+    const { token } = req.query;
+    
+    if (!token) {
+      return res.status(400).send('Token is required');
+    }
+    
+    // Verify the token
+    try {
+      const decoded = jwt.verify(token as string, process.env.JWT_SECRET || 'your-secret-key') as any;
+      
+      // If token is valid, redirect to the frontend dashboard or home page
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`);
+    } catch (error) {
+      console.error('Invalid token:', error);
+      return res.status(401).send('Invalid or expired token');
+    }
+  } catch (error) {
+    console.error('Callback route error:', error);
+    return res.status(500).send('Server error');
+  }
+});
+
 export default router; 
