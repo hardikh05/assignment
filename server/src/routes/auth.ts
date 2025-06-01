@@ -34,11 +34,11 @@ router.get(
       );
       console.log('Generated token:', token);
 
-      // Redirect to frontend with token
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${token}`);
+      // Redirect to frontend with token - using the exact domain from the error URL
+      res.redirect(`https://echoassign.onrender.com/auth/callback?token=${token}`);
     } catch (error) {
       console.error('Auth callback error:', error);
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
+      res.redirect(`https://echoassign.onrender.com/login?error=auth_failed`);
     }
   }
 );
@@ -92,7 +92,7 @@ router.get('/callback', async (req, res) => {
       const decoded = jwt.verify(token as string, process.env.JWT_SECRET || 'your-secret-key') as any;
       
       // If token is valid, redirect to the frontend dashboard or home page
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`);
+      return res.redirect(`https://echoassign.onrender.com/dashboard`);
     } catch (error) {
       console.error('Invalid token:', error);
       return res.status(401).send('Invalid or expired token');

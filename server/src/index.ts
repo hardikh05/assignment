@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsDoc from 'swagger-jsdoc';
 import passport from 'passport';
+import jwt from 'jsonwebtoken';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -80,6 +81,27 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Routes
 app.use('/api/auth', authRoutes);
+
+// Add direct route for /auth/callback to handle the frontend callback
+app.get('/auth/callback', (req, res) => {
+  const { token } = req.query;
+  
+  if (!token) {
+    return res.status(400).send('Token is required');
+  }
+  
+  try {
+    // Verify the token
+    const decoded = jwt.verify(token as string, process.env.JWT_SECRET || 'your-secret-key') as any;
+    
+    // If token is valid, redirect to the frontend dashboard
+    return res.redirect(`https://echoassign.onrender.com/dashboard`);
+  } catch (error) {
+    console.error('Invalid token:', error);
+    return res.status(401).send('Invalid or expired token');
+  }
+});
+
 app.use('/api/customers', customerRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/segments', segmentRoutes);
