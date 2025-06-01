@@ -49,7 +49,7 @@ const Layout = () => {
 
   const handleLogout = () => {
     dispatch(logout());
-    navigate('/login');
+    navigate('/');
   };
 
   const menuItems = [

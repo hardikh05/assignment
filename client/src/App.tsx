@@ -17,11 +17,10 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <Routes>
-        <Route path="/login" element={!token ? <LandingPage /> : <Navigate to="/" />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route
-          path="/"
-          element={token ? <Layout /> : <Navigate to="/login" />}
+          path="/dashboard"
+          element={token ? <Layout /> : <Navigate to="/" />}
         >
           <Route index element={<Dashboard />} />
           <Route path="campaigns" element={<CampaignList />} />
@@ -29,6 +28,8 @@ const App: React.FC = () => {
           <Route path="segments" element={<SegmentList />} />
           <Route path="orders" element={<OrderList />} />
         </Route>
+        {/* Make landing page the root route */}
+        <Route path="/" element={!token ? <LandingPage /> : <Navigate to="/dashboard" />} />
       </Routes>
     </ThemeProvider>
   );
