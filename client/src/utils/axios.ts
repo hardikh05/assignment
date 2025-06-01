@@ -22,10 +22,10 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     // Only redirect to login if it's a 401 error and we're not already on the login page
-    if (error.response?.status === 401 && window.location.pathname !== '/') {
-      // Clear token and redirect to login page (root route)
+    if (error.response?.status === 401 && !window.location.pathname.includes('/login')) {
+      // Clear token and redirect to login
       localStorage.removeItem('token');
-      window.location.href = '/';
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }

@@ -21,10 +21,10 @@ const AuthCallback: React.FC = () => {
         })
         .catch((error: Error) => {
           console.error('Login error:', error);
-          navigate('/');
+          navigate('/login');
         });
     } else {
-      navigate('/');
+      navigate('/login');
     }
   }, [dispatch, navigate, location]);
 
