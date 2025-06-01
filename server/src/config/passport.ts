@@ -8,7 +8,8 @@ export const setupPassport = () => {
       {
         clientID: process.env.GOOGLE_CLIENT_ID || '',
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-        callbackURL: `${process.env.API_URL}/api/auth/google/callback`,
+        // Use the exact URL that's configured in Google OAuth
+        callbackURL: 'https://assignment-uf7q.onrender.com/api/auth/google/callback',
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
