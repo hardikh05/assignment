@@ -454,7 +454,6 @@ const CampaignForm: React.FC<CampaignFormProps> = ({ open, onClose, onSuccess, e
                             <>
                               <Typography variant="body2">{customer.email}</Typography>
                               <Typography variant="body2">{customer.phone}</Typography>
-                              <Typography variant="body2">Spent: ₹{customer.totalSpent?.toFixed(2) || '0.00'}</Typography>
                             </>
                           }
                         />
