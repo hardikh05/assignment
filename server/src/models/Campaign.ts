@@ -2,6 +2,7 @@ import mongoose, { Document } from 'mongoose';
 
 export interface ICampaign extends Document {
   name: string;
+  description?: string;
   segmentId: mongoose.Types.ObjectId;
   message: string;
   customers: mongoose.Types.ObjectId[];
@@ -24,6 +25,10 @@ const campaignSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
+    trim: true
+  },
+  description: {
+    type: String,
     trim: true
   },
   segmentId: {

@@ -6,6 +6,18 @@ import { AppError } from '../middleware/errorHandler';
 
 const router = express.Router();
 
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new AppError('JWT_SECRET is not configured', 500);
+  }
+  return secret;
+};
+
+const getFrontendUrl = (): string => {
+  return process.env.FRONTEND_URL || 'http://localhost:3000';
+};
+
 // Google OAuth routes
 router.get(
   '/google',
@@ -20,25 +32,22 @@ router.get(
   (req, res) => {
     try {
       const user = req.user as any;
-      console.log('Google auth user:', user ? 'Yes' : 'No');
       
       if (!user) {
         throw new AppError('User not found', 404);
       }
 
-      console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
       const token = jwt.sign(
         { id: user._id },
-        process.env.JWT_SECRET || 'your-secret-key',
-        { expiresIn: '30d' } // Extended token expiration for better user experience
+        getJwtSecret(),
+        { expiresIn: '30d' }
       );
-      console.log('Generated token:', token);
 
-      // Redirect to frontend with token - using the exact domain from the error URL
-      res.redirect(`https://echoassign.onrender.com/auth/callback?token=${token}`);
+      // Redirect to frontend with token
+      res.redirect(`${getFrontendUrl()}/auth/callback?token=${token}`);
     } catch (error) {
       console.error('Auth callback error:', error);
-      res.redirect(`https://echoassign.onrender.com/login?error=auth_failed`);
+      res.redirect(`${getFrontendUrl()}/login?error=auth_failed`);
     }
   }
 );
@@ -46,20 +55,15 @@ router.get(
 // Get current user
 router.get('/me', async (req, res, next) => {
   try {
-    console.log('Auth headers:', req.headers);
     const token = req.headers.authorization?.split(' ')[1];
-    console.log('Token:', token);
     
     if (!token) {
       throw new AppError('No token provided', 401);
     }
 
-    console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
-    console.log('Decoded token:', decoded);
+    const decoded = jwt.verify(token, getJwtSecret()) as any;
     
     const user = await User.findById(decoded.id);
-    console.log('Found user:', user ? 'Yes' : 'No');
 
     if (!user) {
       throw new AppError('User not found', 404);
@@ -73,7 +77,6 @@ router.get('/me', async (req, res, next) => {
       role: user.role
     });
   } catch (error) {
-    console.error('Get current user error:', error);
     next(error);
   }
 });
@@ -87,14 +90,12 @@ router.get('/callback', async (req, res) => {
       return res.status(400).send('Token is required');
     }
     
-    // Verify the token
     try {
-      const decoded = jwt.verify(token as string, process.env.JWT_SECRET || 'your-secret-key') as any;
-      
-      // If token is valid, redirect to the frontend dashboard or home page
-      return res.redirect(`https://echoassign.onrender.com/dashboard`);
+      jwt.verify(token as string, getJwtSecret());
+      // If token is valid, redirect to the frontend dashboard
+      return res.redirect(`${getFrontendUrl()}/`);
     } catch (error) {
-      console.error('Invalid token:', error);
+      console.error('Invalid token');
       return res.status(401).send('Invalid or expired token');
     }
   } catch (error) {
@@ -103,4 +104,4 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-export default router; 
+export default router;

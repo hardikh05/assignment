@@ -267,6 +267,8 @@ const CampaignList: React.FC = () => {
       dispatch(addMessage({
         id: Date.now().toString(),
         type: 'error',
+        message: 'Error saving campaign. Please try again.',
+        read: false
       }));
     }
   };
@@ -287,6 +289,8 @@ const CampaignList: React.FC = () => {
       dispatch(addMessage({
         id: Date.now().toString(),
         type: 'error',
+        message: 'Error deleting campaign. Please try again.',
+        read: false
       }));
     }
   };
@@ -344,6 +348,8 @@ const CampaignList: React.FC = () => {
       dispatch(addMessage({
         id: Date.now().toString(),
         type: 'error',
+        message: 'Error sending campaign. Please try again.',
+        read: false
       }));
     }
   };
@@ -508,6 +514,8 @@ const CampaignList: React.FC = () => {
               dispatch(addMessage({
                 id: Date.now().toString(),
                 type: 'error',
+                message: 'Error fetching campaign details. Please try again.',
+                read: false
               }));
             }
           }

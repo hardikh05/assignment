@@ -3,12 +3,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// OpenRouter-based AI client for campaign message generation
+// Note: segments.ts uses direct OpenAI, campaigns.ts uses Gemini
 const openai = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENAI_API_KEY,
   defaultHeaders: {
-    "HTTP-Referer": "http://localhost:3000", // Site URL for rankings on openrouter.ai
-    "X-Title": "Mini CRM", // Site title for rankings on openrouter.ai
+    "HTTP-Referer": process.env.FRONTEND_URL || "http://localhost:3000",
+    "X-Title": "Mini CRM",
   },
 });
 

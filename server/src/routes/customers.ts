@@ -3,47 +3,43 @@ import { body, validationResult } from 'express-validator';
 import { Customer } from '../models/Customer';
 import { producer } from '../config/kafka';
 import { AppError } from '../middleware/errorHandler';
+import { authenticate } from '../middleware/auth';
 import { Producer } from 'kafkajs';
 import { Order } from '../models/Order';
+import { getTotalSpentPipelineStages } from '../utils/segmentQueryBuilder';
 
 const router = express.Router();
 
-// Get all customers with pagination
-router.get('/', async (req: Request, res: Response, next: NextFunction) => {
+// Get all customers with pagination (uses aggregation instead of N+1 queries)
+router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
 
-    // Get customers with pagination
-    const customers = await Customer.find()
-      .select('name email phone totalSpent visits createdAt updatedAt')
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    // Get total spent for each customer from delivered orders
-    const customersWithTotalSpent = await Promise.all(
-      customers.map(async (customer) => {
-        const deliveredOrders = await Order.find({
-          customerId: customer._id,
-          status: 'delivered'
-        });
-
-        const totalSpent = deliveredOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-
-        // Update customer's totalSpent
-        customer.totalSpent = totalSpent;
-        await customer.save();
-
-        return customer;
-      })
-    );
+    // Use aggregation to compute totalSpent in a single query instead of N+1
+    const customers = await Customer.aggregate([
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      ...getTotalSpentPipelineStages(),
+      {
+        $project: {
+          name: 1,
+          email: 1,
+          phone: 1,
+          totalSpent: 1,
+          visits: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        }
+      }
+    ]);
 
     const total = await Customer.countDocuments();
 
     res.json({
-      customers: customersWithTotalSpent,
+      customers,
       pagination: {
         page,
         limit,
@@ -59,6 +55,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 // Create a new customer
 router.post(
   '/',
+  authenticate,
   [
     body('email')
       .isEmail()
@@ -82,7 +79,6 @@ router.post(
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        console.error('Validation errors:', errors.array());
         const errorMessage = errors.array().map(err => err.msg).join(', ');
         throw new AppError(errorMessage, 400);
       }
@@ -99,11 +95,7 @@ router.post(
         totalSpent: 0,
       };
 
-      console.log('Creating customer with data:', customerData);
-
       const customer = await Customer.create(customerData);
-
-      console.log('Customer created successfully:', customer);
 
       // Send customer creation event to Kafka if available
       if (producer) {
@@ -123,7 +115,6 @@ router.post(
 
       res.status(201).json(customer);
     } catch (error) {
-      console.error('Error creating customer:', error);
       next(error);
     }
   }
@@ -132,6 +123,7 @@ router.post(
 // Update a customer
 router.put(
   '/:id',
+  authenticate,
   [
     body('email').optional().isEmail().normalizeEmail(),
     body('name').optional().trim().notEmpty(),
@@ -179,7 +171,7 @@ router.put(
 );
 
 // Delete a customer
-router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     // First delete all orders associated with this customer
     const deletedOrders = await Order.deleteMany({ customerId: req.params.id });
@@ -218,4 +210,4 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-export default router; 
+export default router;

@@ -1,23 +1,42 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import axios from 'axios';
-import { Segment, SegmentState, SegmentRule } from '../../types';
+import { Segment, SegmentRule } from '../../types';
 
 interface PaginationParams {
   page: number;
   limit: number;
 }
 
-const initialState: SegmentState = {
+interface SegmentSliceState {
+  segments: Segment[];
+  loading: boolean;
+  error: string | null;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+}
+
+const initialState: SegmentSliceState = {
   segments: [],
   loading: false,
   error: null,
+  pagination: {
+    page: 1,
+    limit: 100,
+    total: 0,
+  },
 };
 
 export const fetchSegments = createAsyncThunk(
   'segments/fetchSegments',
   async (params: PaginationParams) => {
     const response = await axios.get(`/segments?page=${params.page}&limit=${params.limit}`);
-    return response.data.segments;
+    return {
+      segments: response.data.segments,
+      pagination: response.data.pagination || { page: params.page, limit: params.limit, total: response.data.segments?.length || 0 },
+    };
   }
 );
 
@@ -56,7 +75,7 @@ export const previewSegment = createAsyncThunk(
 export const convertRules = createAsyncThunk(
   'segments/convertRules',
   async (description: string) => {
-    const response = await axios.post('/segments/convert', { description });
+    const response = await axios.post('/segments/convert-rules', { description });
     return response.data;
   }
 );
@@ -71,9 +90,16 @@ const segmentSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchSegments.fulfilled, (state, action: PayloadAction<Segment[]>) => {
+      .addCase(fetchSegments.fulfilled, (state, action) => {
         state.loading = false;
-        state.segments = action.payload;
+        state.segments = action.payload.segments;
+        if (action.payload.pagination) {
+          state.pagination = {
+            page: action.payload.pagination.page,
+            limit: action.payload.pagination.limit,
+            total: action.payload.pagination.total,
+          };
+        }
       })
       .addCase(fetchSegments.rejected, (state, action) => {
         state.loading = false;

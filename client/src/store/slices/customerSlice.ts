@@ -6,19 +6,32 @@ interface CustomerState {
   customers: Customer[];
   loading: boolean;
   error: string | null;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+  };
 }
 
 const initialState: CustomerState = {
   customers: [],
   loading: false,
   error: null,
+  pagination: {
+    page: 1,
+    limit: 100,
+    total: 0,
+  },
 };
 
 export const fetchCustomers = createAsyncThunk(
   'customers/fetchCustomers',
   async ({ page, limit }: { page: number; limit: number }) => {
     const response = await axios.get(`/customers?page=${page}&limit=${limit}`);
-    return response.data.customers;
+    return {
+      customers: response.data.customers,
+      pagination: response.data.pagination || { page, limit, total: response.data.customers?.length || 0 },
+    };
   }
 );
 
@@ -58,7 +71,14 @@ const customerSlice = createSlice({
       })
       .addCase(fetchCustomers.fulfilled, (state, action) => {
         state.loading = false;
-        state.customers = action.payload;
+        state.customers = action.payload.customers;
+        if (action.payload.pagination) {
+          state.pagination = {
+            page: action.payload.pagination.page,
+            limit: action.payload.pagination.limit,
+            total: action.payload.pagination.total,
+          };
+        }
       })
       .addCase(fetchCustomers.rejected, (state, action) => {
         state.loading = false;

@@ -184,32 +184,12 @@ const CampaignForm: React.FC<CampaignFormProps> = ({ open, onClose, onSuccess, e
         throw new Error('Selected segment not found');
       }
 
-      // Create a mock AI-generated message since the API endpoint might not be available
-      // This simulates what the AI would generate based on the campaign and segment
-      const segmentName = selectedSegment.name;
-      const campaignName = formState.name;
-      
-      // Generate a message that follows the format specified in the OpenAI service
-      const mockMessage = `Dear valued ${segmentName} customer! Discover the amazing benefits of our ${campaignName} - click now to learn more and take advantage of this limited-time offer.`;
-      
-      // Simulate API response
-      const response = { 
-        data: { 
-          success: true, 
-          message: mockMessage 
-        } 
-      };
-      
-      // Uncomment this to use the actual API when it's available
-      /*
-      const response = await axios.post('/ai/generate-message', {
-        segmentName: selectedSegment.name,
-        campaignName: formState.name,
-        campaignDescription: formState.description
+      // Call the actual campaign generate-message API endpoint
+      const response = await axios.post('/campaigns/generate-message', {
+        description: `Campaign: ${formState.name}. Segment: ${selectedSegment.name}. ${formState.description || ''}`
       });
-      */
 
-      if (response.data.success) {
+      if (response.data.message) {
         setFormState(prev => ({
           ...prev,
           message: response.data.message
@@ -220,7 +200,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({ open, onClose, onSuccess, e
           severity: 'success'
         });
       } else {
-        throw new Error(response.data.message || 'Failed to generate message');
+        throw new Error('No message returned from AI');
       }
     } catch (error) {
       console.error('Error generating AI message:', error);

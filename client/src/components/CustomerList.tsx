@@ -42,6 +42,7 @@ const CustomerList: React.FC = () => {
     phone: '',
     customFields: {},
   });
+  const [touched, setTouched] = useState<{ email?: boolean; phone?: boolean }>({});
 
   useEffect(() => {
     dispatch(fetchCustomers({ page: 1, limit: 100 }));
@@ -60,6 +61,7 @@ const CustomerList: React.FC = () => {
       phone: '',
       customFields: {},
     });
+    setTouched({});
   };
 
   const handleEdit = (customer: Customer) => {
@@ -268,19 +270,21 @@ const CustomerList: React.FC = () => {
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onBlur={() => setTouched(prev => ({ ...prev, email: true }))}
               required
               margin="normal"
-              error={!validateEmail(formData.email)}
-              helperText={!validateEmail(formData.email) ? 'Please enter a valid email address' : ''}
+              error={touched.email && !validateEmail(formData.email)}
+              helperText={touched.email && !validateEmail(formData.email) ? 'Please enter a valid email address' : ''}
             />
             <TextField
               fullWidth
               label="Phone"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              onBlur={() => setTouched(prev => ({ ...prev, phone: true }))}
               margin="normal"
-              error={!validatePhone(formData.phone)}
-              helperText={!validatePhone(formData.phone) ? 'Please enter a valid phone number' : ''}
+              error={touched.phone && !validatePhone(formData.phone)}
+              helperText={touched.phone && !validatePhone(formData.phone) ? 'Please enter a valid phone number' : ''}
             />
           </Box>
         </DialogContent>

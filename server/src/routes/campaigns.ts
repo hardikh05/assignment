@@ -1,16 +1,16 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { body, validationResult } from 'express-validator';
 import mongoose from 'mongoose';
-import { Campaign, ICampaign } from '../models/Campaign';
+import { Campaign } from '../models/Campaign';
 import { producer } from '../config/kafka';
 import { AppError } from '../middleware/errorHandler';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { Producer } from 'kafkajs';
-import { IUser } from '../models/User';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Customer } from '../models/Customer';
 import { Segment } from '../models/Segment';
 import { Message } from '../models/Message';
+import { buildSegmentQuery, getTotalSpentPipelineStages } from '../utils/segmentQueryBuilder';
 
 // Initialize Gemini
 let gemini: GoogleGenerativeAI | null = null;
@@ -32,7 +32,7 @@ const validateCampaign = [
   body('segmentId').isMongoId().withMessage('Invalid segment ID'),
   body('message').trim().notEmpty().withMessage('Campaign message is required'),
   body('scheduledFor').optional().isISO8601().withMessage('Invalid date format'),
-  body('status').optional().isIn(['draft', 'scheduled', 'running', 'completed', 'failed']).withMessage('Invalid status value')
+  body('status').optional().isIn(['draft', 'completed', 'failed']).withMessage('Invalid status value')
 ];
 
 // Get all campaigns
@@ -414,124 +414,37 @@ router.get('/:id/customers', authenticate, async (req: Request, res: Response, n
       throw new AppError('No segment associated with this campaign', 400);
     }
 
-    // Build query based on segment rules
-    const conditions = segment.rules.map((rule: any) => {
-      switch (rule.operator) {
-        case 'equals':
-          // Handle both string and number values
-          const value = rule.value;
-          if (typeof value === 'string' && !isNaN(Number(value))) {
-            // If the value is a numeric string, try both string and number comparison
-            return {
-              $or: [
-                { [rule.field]: value },
-                { [rule.field]: Number(value) }
-              ]
-            };
-          }
-          return { [rule.field]: value };
-        case 'notEquals':
-          // Handle both string and number values for not equals
-          const notEqualsValue = rule.value;
-          if (typeof notEqualsValue === 'string' && !isNaN(Number(notEqualsValue))) {
-            // If the value is a numeric string, exclude both string and number
-            return {
-              $and: [
-                { [rule.field]: { $ne: notEqualsValue } },
-                { [rule.field]: { $ne: Number(notEqualsValue) } }
-              ]
-            };
-          }
-          return { [rule.field]: { $ne: notEqualsValue } };
-        case 'greaterThan':
-          return { [rule.field]: { $gt: Number(rule.value) } };
-        case 'lessThan':
-          return { [rule.field]: { $lt: Number(rule.value) } };
-        default:
-          return {};
-      }
-    });
+    // Build query using the shared utility
+    const query = buildSegmentQuery(segment.rules, segment.ruleOperator);
 
-    const query = segment.ruleOperator === 'AND' ? { $and: conditions } : { $or: conditions };
-
-    // Aggregate customers with up-to-date totalSpent from delivered orders
-    const customers = await Customer.aggregate([
+    // Use $facet to get both customers and stats in a single aggregation
+    const [result] = await Customer.aggregate([
       { $match: query },
+      ...getTotalSpentPipelineStages(),
       {
-        $lookup: {
-          from: 'orders',
-          localField: '_id',
-          foreignField: 'customerId',
-          as: 'orders'
-        }
-      },
-      {
-        $addFields: {
-          totalSpent: {
-            $sum: {
-              $map: {
-                input: {
-                  $filter: {
-                    input: '$orders',
-                    as: 'order',
-                    cond: { $eq: ['$$order.status', 'delivered'] }
-                  }
-                },
-                as: 'order',
-                in: { $ifNull: ['$$order.totalAmount', 0] }
+        $facet: {
+          customers: [
+            {
+              $project: {
+                name: 1,
+                email: 1,
+                visits: 1,
+                totalSpent: 1
               }
             }
-          }
-        }
-      },
-      {
-        $project: {
-          name: 1,
-          email: 1,
-          visits: 1,
-          totalSpent: 1
-        }
-      }
-    ]);
-
-    // Calculate aggregate statistics
-    const stats = await Customer.aggregate([
-      { $match: query },
-      {
-        $lookup: {
-          from: 'orders',
-          localField: '_id',
-          foreignField: 'customerId',
-          as: 'orders'
-        }
-      },
-      {
-        $addFields: {
-          totalSpent: {
-            $sum: {
-              $map: {
-                input: {
-                  $filter: {
-                    input: '$orders',
-                    as: 'order',
-                    cond: { $eq: ['$$order.status', 'delivered'] }
-                  }
-                },
-                as: 'order',
-                in: { $ifNull: ['$$order.totalAmount', 0] }
+          ],
+          statistics: [
+            {
+              $group: {
+                _id: null,
+                totalCustomers: { $sum: 1 },
+                totalVisits: { $sum: '$visits' },
+                totalSpent: { $sum: '$totalSpent' },
+                averageVisits: { $avg: '$visits' },
+                averageSpent: { $avg: '$totalSpent' }
               }
             }
-          }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalCustomers: { $sum: 1 },
-          totalVisits: { $sum: '$visits' },
-          totalSpent: { $sum: '$totalSpent' },
-          averageVisits: { $avg: '$visits' },
-          averageSpent: { $avg: '$totalSpent' }
+          ]
         }
       }
     ]);
@@ -539,8 +452,8 @@ router.get('/:id/customers', authenticate, async (req: Request, res: Response, n
     res.json({
       status: 'success',
       data: {
-        customers,
-        statistics: stats[0] || {
+        customers: result.customers,
+        statistics: result.statistics[0] || {
           totalCustomers: 0,
           totalVisits: 0,
           totalSpent: 0,
@@ -593,31 +506,8 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
       
       const segment = populatedCampaign.segmentId as any;
       
-      // Build query from segment rules
-      const query: any = {};
-      
-      if (segment.rules && segment.rules.length > 0) {
-        // Process segment rules to build MongoDB query
-        segment.rules.forEach((rule: any) => {
-          if (rule.field && rule.operator && rule.value !== undefined) {
-            switch (rule.operator) {
-              case 'equals':
-                query[rule.field] = rule.value;
-                break;
-              case 'contains':
-                query[rule.field] = { $regex: rule.value, $options: 'i' };
-                break;
-              case 'greaterThan':
-                query[rule.field] = { $gt: Number(rule.value) };
-                break;
-              case 'lessThan':
-                query[rule.field] = { $lt: Number(rule.value) };
-                break;
-              // Add more operators as needed
-            }
-          }
-        });
-      }
+      // Build query from segment rules using the shared utility
+      const query = buildSegmentQuery(segment.rules || [], segment.ruleOperator || 'AND');
       
       // Find customers matching the segment rules
       customers = await Customer.find(query);
@@ -659,8 +549,8 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
     
     // Send messages to customers using vendor API
     const messageResults = [];
-    const successfulDeliveries = [];
-    const failedDeliveries = [];
+    const successfulDeliveries: any[] = [];
+    const failedDeliveries: any[] = [];
     
     // Process customers in batches to avoid overwhelming the vendor API
     const batchSize = 10;
@@ -672,17 +562,13 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
         batch.map(async (customer) => {
           try {
             // Determine message success based on campaign success
-            // For successful campaigns: 95% message success rate
-            // For failed campaigns: 0% message success rate
             let result;
             if (isSuccessful) {
-              // Use vendor API only for successful campaigns
               result = await vendorApi.sendMessage(
                 customer.email, 
                 campaign.message
               );
             } else {
-              // For failed campaigns, simulate failure without calling API
               result = {
                 success: false,
                 messageId: null,
@@ -690,7 +576,6 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
               };
             }
             
-            // Create a message record regardless of success/failure
             const message = {
               userId: user._id,
               customerId: customer._id,
@@ -704,7 +589,6 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
               error: result.error || null
             };
             
-            // Track success/failure for stats
             if (result.success) {
               successfulDeliveries.push(message);
             } else {
@@ -714,7 +598,6 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
             return message;
           } catch (error) {
             console.error(`Error sending message to customer ${customer._id}:`, error);
-            // Create a failed message record
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             const failedMessage = {
               userId: user._id,
@@ -734,17 +617,6 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
       );
       
       messageResults.push(...batchResults);
-      
-      // Update campaign stats after each batch
-      campaign.stats = {
-        totalAudience: customers.length,
-        sent: messageResults.length,
-        delivered: successfulDeliveries.length,
-        failed: failedDeliveries.length,
-        opened: 0, // Will be updated later
-        clicked: 0  // Will be updated later
-      };
-      await campaign.save();
     }
     
     // Save all messages to the database
@@ -753,43 +625,16 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
       console.log(`Processed ${messageResults.length} messages for campaign ${campaign._id}`);
     }
     
-    // Store the total audience count for use in the timeout function
-    const totalAudienceCount = customers.length;
-    
-    // We've already set the campaign status and statistics upfront based on success rate
-    // This timeout is just to simulate some delayed opens and clicks for successful campaigns
-    if (isSuccessful) {
-      setTimeout(async () => {
-        try {
-          const updatedCampaign = await Campaign.findById(campaign._id);
-          if (updatedCampaign && updatedCampaign.status === 'completed') {
-            // Get the number of delivered messages
-            const deliveredMessages = await Message.countDocuments({ 
-              campaignId: campaign._id, 
-              status: 'delivered' 
-            });
-            
-            // Update campaign stats with simulated opens and clicks
-            // These values increase over time to simulate user engagement
-            if (updatedCampaign.stats) {
-              updatedCampaign.stats = {
-                totalAudience: updatedCampaign.stats.totalAudience,
-                sent: updatedCampaign.stats.sent,
-                delivered: updatedCampaign.stats.delivered,
-                failed: updatedCampaign.stats.failed,
-                opened: Math.floor(deliveredMessages * 0.8),  // Increased from 70% to 80%
-                clicked: Math.floor(deliveredMessages * 0.4)  // Increased from 30% to 40%
-              };
-            }
-            
-            await updatedCampaign.save();
-            console.log(`Updated engagement stats for completed campaign ${campaign._id}`);
-          }
-        } catch (error) {
-          console.error('Error updating campaign engagement stats:', error);
-        }
-      }, 60000); // 1 minute
-    }
+    // Compute final stats inline instead of using setTimeout (#21)
+    campaign.stats = {
+      totalAudience: customers.length,
+      sent: messageResults.length,
+      delivered: successfulDeliveries.length,
+      failed: failedDeliveries.length,
+      opened: isSuccessful ? Math.floor(successfulDeliveries.length * 0.8) : 0,
+      clicked: isSuccessful ? Math.floor(successfulDeliveries.length * 0.4) : 0
+    };
+    await campaign.save();
 
     // Send event to Kafka if available
     if (producer) {

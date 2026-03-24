@@ -5,6 +5,7 @@ import { Customer } from '../models/Customer';
 import { AppError } from '../middleware/errorHandler';
 import { authenticate } from '../middleware/auth';
 import OpenAI from 'openai';
+import { buildSegmentQuery, calculateSegmentSize, getTotalSpentPipelineStages } from '../utils/segmentQueryBuilder';
 
 // Define User type
 interface User {
@@ -232,60 +233,13 @@ router.get('/:id/customers', authenticate, async (req: Request, res: Response, n
       throw new AppError('Segment not found', 404);
     }
 
-    // Build query based on segment rules
-    const conditions = segment.rules.map((rule: any) => {
-      switch (rule.operator) {
-        case 'equals':
-          const value = rule.value;
-          if (typeof value === 'string' && !isNaN(Number(value))) {
-            return {
-              $or: [
-                { [rule.field]: value },
-                { [rule.field]: Number(value) }
-              ]
-            };
-          }
-          return { [rule.field]: value };
-        case 'notEquals':
-          const notEqualsValue = rule.value;
-          if (typeof notEqualsValue === 'string' && !isNaN(Number(notEqualsValue))) {
-            return {
-              $and: [
-                { [rule.field]: { $ne: notEqualsValue } },
-                { [rule.field]: { $ne: Number(notEqualsValue) } }
-              ]
-            };
-          }
-          return { [rule.field]: { $ne: notEqualsValue } };
-        case 'greaterThan':
-          return { [rule.field]: { $gt: Number(rule.value) } };
-        case 'lessThan':
-          return { [rule.field]: { $lt: Number(rule.value) } };
-        default:
-          return {};
-      }
-    });
+    // Build query using the shared utility
+    const query = buildSegmentQuery(segment.rules as any[], segment.ruleOperator);
 
-    const query = segment.ruleOperator === 'AND' ? { $and: conditions } : { $or: conditions };
-
-    // Get customers with their total spent
+    // Get customers with their total spent using the shared pipeline
     const customers = await Customer.aggregate([
       { $match: query },
-      {
-        $lookup: {
-          from: 'orders',
-          localField: '_id',
-          foreignField: 'customerId',
-          as: 'orders'
-        }
-      },
-      {
-        $addFields: {
-          totalSpent: {
-            $sum: '$orders.total'
-          }
-        }
-      },
+      ...getTotalSpentPipelineStages(),
       {
         $project: {
           _id: 1,
@@ -312,48 +266,5 @@ router.get('/:id/customers', authenticate, async (req: Request, res: Response, n
     next(error);
   }
 });
-
-// Helper function to calculate segment size
-async function calculateSegmentSize(rules: any[], operator: 'AND' | 'OR') {
-  const conditions = rules.map((rule) => {
-    switch (rule.operator) {
-      case 'equals':
-        // Handle both string and number values
-        const value = rule.value;
-        if (typeof value === 'string' && !isNaN(Number(value))) {
-          // If the value is a numeric string, try both string and number comparison
-          return {
-            $or: [
-              { [rule.field]: value },
-              { [rule.field]: Number(value) }
-            ]
-          };
-        }
-        return { [rule.field]: value };
-      case 'notEquals':
-        // Handle both string and number values for not equals
-        const notEqualsValue = rule.value;
-        if (typeof notEqualsValue === 'string' && !isNaN(Number(notEqualsValue))) {
-          // If the value is a numeric string, exclude both string and number
-          return {
-            $and: [
-              { [rule.field]: { $ne: notEqualsValue } },
-              { [rule.field]: { $ne: Number(notEqualsValue) } }
-            ]
-          };
-        }
-        return { [rule.field]: { $ne: notEqualsValue } };
-      case 'greaterThan':
-        return { [rule.field]: { $gt: Number(rule.value) } };
-      case 'lessThan':
-        return { [rule.field]: { $lt: Number(rule.value) } };
-      default:
-        return {};
-    }
-  });
-
-  const query = operator === 'AND' ? { $and: conditions } : { $or: conditions };
-  return Customer.countDocuments(query);
-}
 
 export default router; 

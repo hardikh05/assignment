@@ -45,6 +45,11 @@ export interface SegmentState {
   segments: Segment[];
   loading: boolean;
   error: string | null;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+  };
 }
 
 // Campaign Types
@@ -83,20 +88,34 @@ export interface CampaignState {
   };
   loading: boolean;
   error: string | null;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+  };
 }
 
 // Order Types
 export interface Order {
   _id: string;
   customerId: string;
-  amount: number;
-  status: 'pending' | 'completed' | 'cancelled';
+  orderNumber: string;
+  totalAmount: number;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   items: OrderItem[];
-  createdAt: Date;
+  shippingAddress?: {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface OrderItem {
-  productId: string;
+  name: string;
   quantity: number;
   price: number;
 }
@@ -145,4 +164,5 @@ export interface OrderFormData {
   items: OrderItem[];
   totalAmount: number;
   status: Order['status'];
+  orderNumber: string;
 } 
