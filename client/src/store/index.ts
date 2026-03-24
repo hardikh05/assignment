@@ -5,6 +5,11 @@ import segmentReducer from './slices/segmentSlice';
 import campaignReducer from './slices/campaignSlice';
 import orderReducer from './slices/orderSlice';
 import messageReducer from './slices/messageSlice';
+import templateReducer from './slices/templateSlice';
+import webhookReducer from './slices/webhookSlice';
+import auditLogReducer from './slices/auditLogSlice';
+import analyticsReducer from './slices/analyticsSlice';
+import aiChatReducer from './slices/aiChatSlice';
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +19,11 @@ export const store = configureStore({
     campaigns: campaignReducer,
     orders: orderReducer,
     messages: messageReducer,
+    templates: templateReducer,
+    webhooks: webhookReducer,
+    auditLogs: auditLogReducer,
+    analytics: analyticsReducer,
+    aiChat: aiChatReducer,
   },
 });
 

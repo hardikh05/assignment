@@ -28,6 +28,11 @@ import {
   ShoppingCart as ShoppingCartIcon,
   LightMode as LightModeIcon,
   DarkMode as DarkModeIcon,
+  Analytics as AnalyticsIcon,
+  SmartToy as AIIcon,
+  Email as EmailIcon,
+  Webhook as WebhookIcon,
+  History as AuditIcon,
 } from '@mui/icons-material';
 import { useThemeContext } from '../contexts/ThemeContext';
 import { logout } from '../store/slices/authSlice';
@@ -58,6 +63,11 @@ const Layout = () => {
     { text: 'Segments', icon: <CategoryIcon />, path: '/segments' },
     { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns' },
     { text: 'Orders', icon: <ShoppingCartIcon />, path: '/orders' },
+    { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
+    { text: 'AI Chat', icon: <AIIcon />, path: '/ai-chat' },
+    { text: 'Templates', icon: <EmailIcon />, path: '/templates' },
+    { text: 'Webhooks', icon: <WebhookIcon />, path: '/webhooks' },
+    { text: 'Audit Log', icon: <AuditIcon />, path: '/audit-logs' },
   ];
 
   const bottomMenuItems = [

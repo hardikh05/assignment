@@ -184,9 +184,11 @@ const CampaignForm: React.FC<CampaignFormProps> = ({ open, onClose, onSuccess, e
         throw new Error('Selected segment not found');
       }
 
-      // Call the actual campaign generate-message API endpoint
-      const response = await axios.post('/campaigns/generate-message', {
-        description: `Campaign: ${formState.name}. Segment: ${selectedSegment.name}. ${formState.description || ''}`
+      // Call the AI generate-message API endpoint (OpenRouter)
+      const response = await axios.post('/ai/generate-message', {
+        segmentName: selectedSegment.name,
+        campaignName: formState.name,
+        campaignDescription: formState.description || ''
       });
 
       if (response.data.message) {

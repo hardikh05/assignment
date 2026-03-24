@@ -4,7 +4,7 @@ import { Segment } from '../models/Segment';
 import { Customer } from '../models/Customer';
 import { AppError } from '../middleware/errorHandler';
 import { authenticate } from '../middleware/auth';
-import OpenAI from 'openai';
+import { convertNaturalLanguageToRules } from '../services/openai';
 import { buildSegmentQuery, calculateSegmentSize, getTotalSpentPipelineStages } from '../utils/segmentQueryBuilder';
 
 // Define User type
@@ -24,20 +24,6 @@ declare global {
 }
 
 const router = express.Router();
-
-// Initialize OpenAI with error handling
-let openai: OpenAI;
-try {
-  if (!process.env.OPENAI_API_KEY) {
-    console.warn('Warning: OPENAI_API_KEY is not set. AI features will be disabled.');
-  } else {
-    openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
-} catch (error) {
-  console.error('Error initializing OpenAI:', error);
-}
 
 // Get all segments with pagination
 router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
@@ -122,34 +108,11 @@ router.post('/convert-rules', authenticate, async (req: Request, res: Response, 
   try {
     const { description } = req.body;
 
-    if (!openai) {
-      throw new AppError('AI features are disabled. Please set OPENAI_API_KEY.', 503);
+    if (!process.env.GROQ_API_KEY) {
+      throw new AppError('AI features are disabled. Please set GROQ_API_KEY.', 503);
     }
 
-    const prompt = `Convert the following customer segment description into structured rules:
-    Description: ${description}
-    Requirements:
-    - Return only valid JSON array of rules
-    - Each rule should have 'field', 'operator', and 'value' properties
-    - Supported operators: equals, not_equals, contains, not_contains, greater_than, less_than
-    - Use proper data types for values (string, number, boolean)
-    Example format:
-    [
-      {
-        "field": "age",
-        "operator": "greater_than",
-        "value": 25
-      }
-    ]`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 200,
-      temperature: 0.7,
-    });
-
-    const rules = JSON.parse(completion.choices[0].message?.content || '[]');
+    const rules = await convertNaturalLanguageToRules(description);
 
     res.json({ rules });
   } catch (error) {

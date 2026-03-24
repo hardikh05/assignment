@@ -6,7 +6,8 @@ export interface ICampaign extends Document {
   segmentId: mongoose.Types.ObjectId;
   message: string;
   customers: mongoose.Types.ObjectId[];
-  status: 'draft' | 'completed' | 'failed';
+  createdBy: mongoose.Types.ObjectId;
+  status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed';
   scheduledFor?: Date;
   sentAt?: Date;
   stats?: {
@@ -44,9 +45,13 @@ const campaignSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer'
   }],
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
   status: {
     type: String,
-    enum: ['draft', 'completed', 'failed'],
+    enum: ['draft', 'scheduled', 'sending', 'completed', 'failed'],
     default: 'draft'
   },
   scheduledFor: {

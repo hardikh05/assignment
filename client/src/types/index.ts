@@ -60,7 +60,7 @@ export interface Campaign {
   segmentId: string | Segment | { _id: string; name: string; };
   message?: string;
   customerIds: string[];
-  status: 'draft' | 'completed' | 'failed';
+  status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed';
   scheduledFor?: string;
   totalSpent?: number;
   stats?: CampaignStats;
@@ -165,4 +165,124 @@ export interface OrderFormData {
   totalAmount: number;
   status: Order['status'];
   orderNumber: string;
-} 
+}
+
+// Webhook Types
+export interface Webhook {
+  _id: string;
+  url: string;
+  events: string[];
+  secret?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookState {
+  webhooks: Webhook[];
+  loading: boolean;
+  error: string | null;
+}
+
+// Audit Log Types
+export interface AuditLog {
+  _id: string;
+  userId: string;
+  userName: string;
+  action: string;
+  resource: string;
+  resourceId?: string;
+  details?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface AuditLogState {
+  logs: AuditLog[];
+  loading: boolean;
+  error: string | null;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+}
+
+// Email Template Types
+export interface EmailTemplate {
+  _id: string;
+  name: string;
+  subject: string;
+  htmlContent: string;
+  jsonDesign?: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailTemplateState {
+  templates: EmailTemplate[];
+  loading: boolean;
+  error: string | null;
+}
+
+// Tracking / Analytics Types
+export interface TrackingEvent {
+  _id: string;
+  campaignId: string;
+  customerId: string;
+  type: 'open' | 'click';
+  url?: string;
+  userAgent?: string;
+  createdAt: string;
+}
+
+export interface AnalyticsData {
+  totalOpens: number;
+  uniqueOpens: number;
+  totalClicks: number;
+  uniqueClicks: number;
+  openRate: number;
+  clickRate: number;
+  timeline: { date: string; opens: number; clicks: number }[];
+}
+
+export interface AnalyticsState {
+  data: AnalyticsData | null;
+  loading: boolean;
+  error: string | null;
+}
+
+// AI Chat Types
+export interface AIChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  data?: any;
+}
+
+export interface AIChatState {
+  messages: AIChatMessage[];
+  loading: boolean;
+  error: string | null;
+}
+
+// Activity Timeline Types
+export interface ActivityEvent {
+  type: 'order' | 'message' | 'campaign';
+  date: string;
+  title: string;
+  description: string;
+  status: string;
+  data: any;
+}
+
+// Socket.io event types
+export interface CampaignProgress {
+  campaignId: string;
+  totalAudience: number;
+  sent: number;
+  delivered: number;
+  failed: number;
+  progress: number;
+  status: string;
+}

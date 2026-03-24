@@ -1,2 +1,4 @@
 .env
 node-modules
+*.log
+nul

@@ -10,7 +10,13 @@ import SegmentList from './components/SegmentList';
 import OrderList from './components/OrderList';
 import LandingPage from './components/LandingPage';
 import AuthCallback from './components/AuthCallback';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import AIChat from './components/AIChat';
+import EmailTemplateBuilder from './components/EmailTemplateBuilder';
+import WebhookManager from './components/WebhookManager';
+import AuditLogViewer from './components/AuditLogViewer';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SocketProvider } from './contexts/SocketContext';
 
 const App: React.FC = () => {
   const { token } = useAppSelector((state) => state.auth);
@@ -29,20 +35,27 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <Routes>
-        <Route path="/login" element={!token ? <LandingPage /> : <Navigate to="/" />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route
-          path="/"
-          element={token ? <Layout /> : <Navigate to="/login" />}
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="campaigns" element={<CampaignList />} />
-          <Route path="customers" element={<CustomerList />} />
-          <Route path="segments" element={<SegmentList />} />
-          <Route path="orders" element={<OrderList />} />
-        </Route>
-      </Routes>
+      <SocketProvider>
+        <Routes>
+          <Route path="/login" element={!token ? <LandingPage /> : <Navigate to="/" />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route
+            path="/"
+            element={token ? <Layout /> : <Navigate to="/login" />}
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="campaigns" element={<CampaignList />} />
+            <Route path="customers" element={<CustomerList />} />
+            <Route path="segments" element={<SegmentList />} />
+            <Route path="orders" element={<OrderList />} />
+            <Route path="analytics" element={<AnalyticsDashboard />} />
+            <Route path="ai-chat" element={<AIChat />} />
+            <Route path="templates" element={<EmailTemplateBuilder />} />
+            <Route path="webhooks" element={<WebhookManager />} />
+            <Route path="audit-logs" element={<AuditLogViewer />} />
+          </Route>
+        </Routes>
+      </SocketProvider>
     </ThemeProvider>
   );
 };

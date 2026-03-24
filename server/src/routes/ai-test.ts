@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
     success: true,
     message: 'AI test endpoint is working',
     env: {
-      openaiKeySet: !!process.env.OPENAI_API_KEY
+      groqKeySet: !!process.env.GROQ_API_KEY
     }
   });
 });

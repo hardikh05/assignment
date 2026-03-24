@@ -50,3 +50,18 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     next(error);
   }
 };
+
+// Role-Based Access Control middleware
+// Usage: authorize('admin', 'manager') — only those roles can access the route
+export const authorize = (...allowedRoles: string[]) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const user = (req as AuthRequest).user;
+    if (!user) {
+      return next(new AppError('Authentication required', 401));
+    }
+    if (!allowedRoles.includes(user.role)) {
+      return next(new AppError('You do not have permission to perform this action', 403));
+    }
+    next();
+  };
+};

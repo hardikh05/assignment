@@ -3,16 +3,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// OpenRouter-based AI client for campaign message generation
-// Note: segments.ts uses direct OpenAI, campaigns.ts uses Gemini
-const openai = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENAI_API_KEY,
-  defaultHeaders: {
-    "HTTP-Referer": process.env.FRONTEND_URL || "http://localhost:3000",
-    "X-Title": "Mini CRM",
-  },
+// Single AI client using Groq for all AI features
+// Groq provides an OpenAI-compatible API with very fast inference
+const groq = new OpenAI({
+  baseURL: "https://api.groq.com/openai/v1",
+  apiKey: process.env.GROQ_API_KEY,
 });
+
+const AI_MODEL = "llama-3.3-70b-versatile";
 
 export const generateCampaignMessage = async (
   segmentName: string,
@@ -34,8 +32,8 @@ export const generateCampaignMessage = async (
     
     Write only the message content, without any explanations or notes.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "meta-llama/llama-3.3-8b-instruct:free",
+    const completion = await groq.chat.completions.create({
+      model: AI_MODEL,
       messages: [
         { role: "system", content: "You are a professional marketing copywriter." },
         { role: "user", content: prompt }
@@ -48,5 +46,44 @@ export const generateCampaignMessage = async (
   } catch (error) {
     console.error('Error generating campaign message:', error);
     throw new Error('Failed to generate campaign message');
+  }
+};
+
+export const convertNaturalLanguageToRules = async (description: string): Promise<any[]> => {
+  try {
+    const prompt = `Convert the following customer segment description into structured rules:
+    Description: ${description}
+    Requirements:
+    - Return only valid JSON array of rules
+    - Each rule should have 'field', 'operator', and 'value' properties
+    - Supported operators: equals, not_equals, contains, not_contains, greater_than, less_than
+    - Use proper data types for values (string, number, boolean)
+    - Return ONLY the JSON array, no extra text or markdown
+    Example format:
+    [
+      {
+        "field": "age",
+        "operator": "greater_than",
+        "value": 25
+      }
+    ]`;
+
+    const completion = await groq.chat.completions.create({
+      model: AI_MODEL,
+      messages: [
+        { role: "system", content: "You are a JSON generator. Return only valid JSON arrays with no extra text, no markdown, no code fences." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 200,
+      temperature: 0.3,
+    });
+
+    const content = completion.choices[0]?.message?.content?.trim() || '[]';
+    // Strip markdown code fences if present
+    const cleaned = content.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.error('Error converting rules:', error);
+    throw new Error('Failed to convert natural language to rules');
   }
 };

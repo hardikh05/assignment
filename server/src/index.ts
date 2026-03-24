@@ -4,6 +4,7 @@ import dns from 'dns';
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -21,12 +22,19 @@ import segmentRoutes from './routes/segments';
 import orderRoutes from './routes/orders';
 import messageRoutes from './routes/messages';
 import aiRoutes from './routes/ai';
-import aiTestRoutes from './routes/ai-test';
+import webhookRoutes from './routes/webhooks';
+import auditLogRoutes from './routes/auditLogs';
+import templateRoutes from './routes/templates';
+import trackingRoutes from './routes/tracking';
+import aiChatRoutes from './routes/aiChat';
+import csvRoutes from './routes/csvImportExport';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
 import { setupKafka, initializeKafka } from './config/kafka';
 import { setupPassport } from './config/passport';
+import { initializeSocket } from './config/socket';
+import { startScheduler } from './services/scheduler';
 
 // Load environment variables with explicit path
 const envPath = path.resolve(__dirname, '../.env');
@@ -47,7 +55,7 @@ if (!process.env.JWT_SECRET) {
 
 // Debug logging (no secrets)
 console.log('Environment variables loaded:', {
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'Set' : 'Not set',
+  GROQ_API_KEY: process.env.GROQ_API_KEY ? 'Set' : 'Not set',
   MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set',
   NODE_ENV: process.env.NODE_ENV,
   KAFKA_BROKERS: process.env.KAFKA_BROKERS ? 'Set' : 'Not set',
@@ -164,7 +172,12 @@ app.use('/api/segments', segmentRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/ai', aiLimiter, aiRoutes);
-app.use('/api/ai-test', aiTestRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/tracking', trackingRoutes);
+app.use('/api/ai-chat', aiLimiter, aiChatRoutes);
+app.use('/api/csv', csvRoutes);
 
 // Error handling
 app.use(errorHandler);
@@ -182,8 +195,15 @@ mongoose
 // Setup Kafka
 setupKafka().catch(console.error);
 
-// Start server
+// Start server with Socket.io
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+
+// Initialize Socket.io
+initializeSocket(httpServer);
+
+httpServer.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  // Start campaign scheduler
+  startScheduler();
 });

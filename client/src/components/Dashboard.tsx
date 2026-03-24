@@ -55,13 +55,14 @@ const Dashboard: React.FC = () => {
 
   let campaignStatusData = [
     { name: 'Draft', value: campaigns.filter((c: Campaign) => c.status === 'draft').length },
+    { name: 'Scheduled', value: campaigns.filter((c: Campaign) => c.status === 'scheduled').length },
     { name: 'Completed', value: campaigns.filter((c: Campaign) => c.status === 'completed').length },
     { name: 'Failed', value: campaigns.filter((c: Campaign) => c.status === 'failed').length },
   ];
   // Filter out statuses with value 0 for better pie chart clarity
   campaignStatusData = campaignStatusData.filter(item => item.value > 0);
 
-  const COLORS = ['#0088FE', '#00C49F', '#FF4C4C'];
+  const COLORS = ['#0088FE', '#FFBB28', '#00C49F', '#FF4C4C'];
 
   if (campaignsLoading || segmentsLoading) {
     return (

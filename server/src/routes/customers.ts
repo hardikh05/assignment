@@ -6,6 +6,8 @@ import { AppError } from '../middleware/errorHandler';
 import { authenticate } from '../middleware/auth';
 import { Producer } from 'kafkajs';
 import { Order } from '../models/Order';
+import { Message } from '../models/Message';
+import { Campaign } from '../models/Campaign';
 import { getTotalSpentPipelineStages } from '../utils/segmentQueryBuilder';
 
 const router = express.Router();
@@ -206,6 +208,67 @@ router.delete('/:id', authenticate, async (req: Request, res: Response, next: Ne
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting customer:', error);
+    next(error);
+  }
+});
+
+// Get customer activity timeline
+router.get('/:id/activity', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const customerId = req.params.id;
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      throw new AppError('Customer not found', 404);
+    }
+
+    // Fetch orders, messages, and campaign inclusions in parallel
+    const [orders, messages, campaigns] = await Promise.all([
+      Order.find({ customerId }).sort({ createdAt: -1 }).lean(),
+      Message.find({ customerId }).sort({ timestamp: -1 }).lean(),
+      Campaign.find({ customers: customerId }).select('name status sentAt createdAt').sort({ createdAt: -1 }).lean(),
+    ]);
+
+    // Build unified timeline
+    const timeline: any[] = [];
+
+    for (const order of orders) {
+      timeline.push({
+        type: 'order',
+        date: order.createdAt,
+        title: `Order #${order.orderNumber}`,
+        description: `${order.items?.length || 0} items - $${order.totalAmount?.toFixed(2)}`,
+        status: order.status,
+        data: order,
+      });
+    }
+
+    for (const msg of messages) {
+      timeline.push({
+        type: 'message',
+        date: (msg as any).timestamp || (msg as any).createdAt,
+        title: `Campaign: ${(msg as any).campaignName || 'Unknown'}`,
+        description: ((msg as any).message || '').substring(0, 100),
+        status: (msg as any).status,
+        data: msg,
+      });
+    }
+
+    for (const campaign of campaigns) {
+      timeline.push({
+        type: 'campaign',
+        date: campaign.sentAt || campaign.createdAt,
+        title: `Added to campaign: ${campaign.name}`,
+        description: `Status: ${campaign.status}`,
+        status: campaign.status,
+        data: campaign,
+      });
+    }
+
+    // Sort by date descending
+    timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    res.json({ status: 'success', data: { customer, timeline } });
+  } catch (error) {
     next(error);
   }
 });

@@ -49,7 +49,7 @@ interface CampaignFormData {
   name: string;
   description: string;
   segmentId: string;
-  status: 'draft' | 'scheduled' | 'running' | 'completed' | 'failed';
+  status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed';
   message?: string;
   scheduledFor?: string;
 }

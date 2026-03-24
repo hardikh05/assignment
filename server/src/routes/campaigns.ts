@@ -6,23 +6,10 @@ import { producer } from '../config/kafka';
 import { AppError } from '../middleware/errorHandler';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { Producer } from 'kafkajs';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Customer } from '../models/Customer';
 import { Segment } from '../models/Segment';
 import { Message } from '../models/Message';
 import { buildSegmentQuery, getTotalSpentPipelineStages } from '../utils/segmentQueryBuilder';
-
-// Initialize Gemini
-let gemini: GoogleGenerativeAI | null = null;
-try {
-  if (!process.env.GEMINI_API_KEY) {
-    console.warn('Warning: GEMINI_API_KEY is not set. AI features will be disabled.');
-  } else {
-    gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  }
-} catch (error) {
-  console.error('Error initializing Gemini:', error);
-}
 
 const router = express.Router();
 
@@ -32,7 +19,7 @@ const validateCampaign = [
   body('segmentId').isMongoId().withMessage('Invalid segment ID'),
   body('message').trim().notEmpty().withMessage('Campaign message is required'),
   body('scheduledFor').optional().isISO8601().withMessage('Invalid date format'),
-  body('status').optional().isIn(['draft', 'completed', 'failed']).withMessage('Invalid status value')
+  body('status').optional().isIn(['draft', 'scheduled', 'completed', 'failed']).withMessage('Invalid status value')
 ];
 
 // Get all campaigns
@@ -132,6 +119,7 @@ router.post('/', authenticate, validateCampaign, async (req: Request, res: Respo
       message,
       customers,
       scheduledFor,
+      createdBy: user._id,
       // Use the status from the request if provided, otherwise determine based on scheduledFor
       status: status || (scheduledFor ? 'scheduled' : 'draft')
     });
@@ -315,58 +303,6 @@ router.delete('/:id', authenticate, async (req: Request, res: Response, next: Ne
   }
 });
 
-// Generate campaign message using Gemini
-router.post(
-  '/generate-message',
-  authenticate,
-  [
-    body('description').trim().notEmpty(),
-  ],
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ error: 'Description is required for AI message generation.' });
-      }
-
-      if (!process.env.GEMINI_API_KEY) {
-        console.error('GEMINI_API_KEY is not set. AI features are disabled.');
-        return res.status(503).json({ error: 'AI features are disabled. Please set GEMINI_API_KEY on the server.' });
-      }
-
-      if (!gemini) {
-        try {
-          gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        } catch (err) {
-          console.error('Failed to initialize Gemini:', err);
-          return res.status(503).json({ error: 'Failed to initialize AI features. Check your Gemini API key.' });
-        }
-      }
-
-      const { description } = req.body;
-
-      const prompt = `Generate a compelling marketing message based on the following campaign description:\nDescription: ${description}\nRequirements:\n- Keep the message concise and engaging\n- Include a clear call to action\n- Maintain a professional tone\n- Focus on the value proposition`;
-
-      try {
-        const model = gemini.getGenerativeModel({ model: 'gemini-pro' });
-        const result = await model.generateContent(prompt);
-        const message = result.response.text();
-        res.json({ message });
-      } catch (err: any) {
-        if (err && err.status === 404) {
-          // Log a clear error message for debugging
-          console.error('Gemini API 404 error: Model not found. Please check your Gemini API key permissions and model availability.');
-          return res.status(500).json({ error: 'Gemini AI model not found or not available for your API key. Please check your Gemini API key permissions and model availability.' });
-        }
-        console.error('Gemini API error:', err);
-        return res.status(500).json({ error: 'Failed to generate message using AI. Please try again later.' });
-      }
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
 // Get customers matching segment rules
 router.get('/:id/customers', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -469,6 +405,8 @@ router.get('/:id/customers', authenticate, async (req: Request, res: Response, n
 
 // Import vendor API service
 import vendorApi from '../services/vendorApi';
+import { emitCampaignProgress, emitCampaignComplete } from '../config/socket';
+import { fireWebhooks } from '../services/webhookService';
 
 // Send campaign
 router.post('/:id/send', authenticate, async (req: Request, res: Response, next: NextFunction) => {
@@ -527,25 +465,15 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
     // Determine if campaign succeeds (90%) or fails (10%)
     const isSuccessful = Math.random() <= 0.9;
     
-    // Update campaign status based on success rate
-    campaign.status = isSuccessful ? 'completed' : 'failed';
-    campaign.sentAt = new Date();
+    // Mark campaign as sending
+    campaign.status = 'sending' as any;
+    await campaign.save();
     
     // Initialize stats based on success/failure
     const totalAudience = customers.length;
-    const delivered = isSuccessful ? Math.floor(totalAudience * 0.95) : 0; // 95% delivery rate for successful campaigns
-    const failed = isSuccessful ? totalAudience - delivered : totalAudience;
-    
-    campaign.stats = {
-      totalAudience: totalAudience,
-      sent: totalAudience,
-      delivered: delivered,
-      failed: failed,
-      opened: isSuccessful ? Math.floor(delivered * 0.7) : 0, // 70% open rate for delivered messages
-      clicked: isSuccessful ? Math.floor(delivered * 0.3) : 0  // 30% click rate for delivered messages
-    };
-    
-    await campaign.save();
+    let sentCount = 0;
+    let deliveredCount = 0;
+    let failedCount = 0;
     
     // Send messages to customers using vendor API
     const messageResults = [];
@@ -591,9 +519,12 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
             
             if (result.success) {
               successfulDeliveries.push(message);
+              deliveredCount++;
             } else {
               failedDeliveries.push(message);
+              failedCount++;
             }
+            sentCount++;
             
             return message;
           } catch (error) {
@@ -611,12 +542,24 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
               error: errorMessage
             };
             failedDeliveries.push(failedMessage);
+            sentCount++;
+            failedCount++;
             return failedMessage;
           }
         })
       );
       
       messageResults.push(...batchResults);
+
+      // Emit real-time progress via Socket.io
+      emitCampaignProgress(campaign._id.toString(), {
+        totalAudience,
+        sent: sentCount,
+        delivered: deliveredCount,
+        failed: failedCount,
+        progress: Math.round((sentCount / totalAudience) * 100),
+        status: 'sending',
+      });
     }
     
     // Save all messages to the database
@@ -626,7 +569,9 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
     }
     
     // Compute final stats inline instead of using setTimeout (#21)
-    campaign.stats = {
+    campaign.status = isSuccessful ? 'completed' : 'failed';
+    campaign.sentAt = new Date();
+    const finalStats = {
       totalAudience: customers.length,
       sent: messageResults.length,
       delivered: successfulDeliveries.length,
@@ -634,7 +579,13 @@ router.post('/:id/send', authenticate, async (req: Request, res: Response, next:
       opened: isSuccessful ? Math.floor(successfulDeliveries.length * 0.8) : 0,
       clicked: isSuccessful ? Math.floor(successfulDeliveries.length * 0.4) : 0
     };
+    campaign.stats = finalStats;
     await campaign.save();
+
+    // Emit completion via Socket.io
+    emitCampaignComplete(campaign._id.toString(), finalStats);
+    // Fire webhooks
+    fireWebhooks('campaign.completed', { campaignId: campaign._id, stats: finalStats });
 
     // Send event to Kafka if available
     if (producer) {
